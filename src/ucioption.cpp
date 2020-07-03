@@ -132,6 +132,10 @@ Option::operator double() const {
 }
 
 Option::operator std::string() const {
+  return get_str();
+}
+
+std::string Option::get_str() const {
   assert(type == "string");
   return currentValue;
 }

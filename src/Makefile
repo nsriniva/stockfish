@@ -515,7 +515,7 @@ TMP:=$(LDFLAGS)
 LDFLAGS= $(subst "-msse","",$(TMP))
 
 $(DSO): $(OBJS)
-	$(CXX) $(OBJS) -shared -lpthread -Wl,-flto -Wl,-soname,$@ -o $@
+	$(CXX) -o $@ -shared -Wl,-flto -Wl,-soname,$@ $(OBJS) $(LDFLAGS)
 
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS)

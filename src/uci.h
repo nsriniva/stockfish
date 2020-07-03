@@ -57,6 +57,7 @@ public:
   operator double() const;
   operator std::string() const;
   bool operator==(const char*) const;
+  std::string get_str() const;
 
 private:
   friend std::ostream& operator<<(std::ostream&, const OptionsMap&);
@@ -66,8 +67,11 @@ private:
   size_t idx;
   OnChange on_change;
 };
+  
 
 void init(OptionsMap&);
+void loop_init(void);
+void loop_next(std::string cmd);
 void loop(int argc, char* argv[]);
 std::string value(Value v);
 std::string square(Square s);
