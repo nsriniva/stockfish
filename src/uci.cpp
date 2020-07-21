@@ -49,6 +49,7 @@ namespace {
   // or the starting position ("startpos") and then makes the moves given in the
   // following move list ("moves").
 
+  
   void position(Position& pos, istringstream& is, StateListPtr& states) {
 
     Move m;
@@ -220,6 +221,13 @@ namespace UCI {
 
 void UCI::loop_init() {
   pos.set(StartFEN, false, &states->back(), Threads.main());
+}
+
+void UCI::set_position(Position& pos, const string& strpos) {
+  static StateListPtr states;
+  
+  states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
+  pos.set(strpos, Options["UCI_Chess960"], &states->back(), Threads.main());
 }
 
 

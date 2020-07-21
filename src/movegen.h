@@ -21,6 +21,7 @@
 #ifndef MOVEGEN_H_INCLUDED
 #define MOVEGEN_H_INCLUDED
 
+#include <iostream>
 #include <algorithm>
 
 #include "types.h"
@@ -58,11 +59,13 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
 template<GenType T>
-struct MoveList {
+class MoveList {
 
-  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {}
+public:
+  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {std::cout << "last = " << last << " begin = " << moveList << " size = " << size() << std::endl;}
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
+  const ExtMove* item(int i) {return moveList+i;}
   size_t size() const { return last - moveList; }
   bool contains(Move move) const {
     return std::find(begin(), end(), move) != end();
@@ -72,4 +75,5 @@ private:
   ExtMove moveList[MAX_MOVES], *last;
 };
 
+using MoveList_LEGAL = MoveList<LEGAL>;
 #endif // #ifndef MOVEGEN_H_INCLUDED

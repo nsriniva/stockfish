@@ -14,10 +14,30 @@ cppyy.load_library('libstockfish.so')
 
 from cppyy.gbl import engine_info, UCI, Tune, PSQT, Bitboards, \
     Position, Bitbases, Endgames, Threads, Search, Options, std, \
-    StateListPtr, StateInfo
+    StateListPtr, StateInfo, generate, MAX_MOVES, ExtMove, \
+    MoveList, LEGAL, MoveList_LEGAL
 from cppyy.gbl.UCI import Option
 
+class Moves(object):
 
+    def __init__(self, movelist):
+        self.movelist = movelist
+        
+    def __iter__(self):
+        self.idx = -1
+        self.end = self.movelist.size()
+        return self
+    
+    def __next__(self):
+        self.idx += 1
+        if self.idx not in range(self.end):
+            raise StopIteration
+
+        return self.movelist.item(self.idx)
+
+    def __del__(self):
+        del self.movelist
+        
 class Stockfish(object):
 
     def __init__(self):
@@ -31,8 +51,9 @@ class Stockfish(object):
         Threads.set(int(Options['Threads'].__float__()))
         Search.clear()
 
-        UCI.loop_init()
+        #UCI.loop_init()
 
+        self.pos = Position()
         for name,val in Options:
             print(name, val)
 
@@ -40,8 +61,15 @@ class Stockfish(object):
     def __del__(self):
         Threads.set(0)
 
-    def position(self, cmd):
-        UCI.loop_next('position '+cmd)
+    def position(self, position_str):
+        #UCI.loop_next('position '+cmd)
+        UCI.set_position(self.pos, position_str)
+
+    def is_chess960(self):
+        return self.pos.is_chess960()
+    
+    def legal_moves(self):
+        return Moves(MoveList_LEGAL(self.pos))
 
     def go(self, cmd):
         UCI.loop_next('go '+cmd)
@@ -53,9 +81,13 @@ class Stockfish(object):
 print('-----------Starting Stockfish--------------------')
 s = Stockfish()
 print('-----------Position Stockfish-----------------')
-s.position('fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+#s.position('fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+s.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
 print('-----------Go Stockfish-----------------------')
-s.go('perft 1')
+moves = s.legal_moves()
+
+for m in moves:
+    print(UCI.move(m.move, s.is_chess960()))
 print('-----------Terminate Stockfish----------------')
 del s
 print('-----------Stockfish Terminated---------------')
