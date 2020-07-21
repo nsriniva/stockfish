@@ -1,4 +1,3 @@
-from io import StringIO
 import cppyy
 
 def replace_getstr(klass, name):
@@ -69,12 +68,6 @@ class Stockfish(object):
     def legal_moves(self):
         return Moves(MoveList_LEGAL(self.pos))
 
-s = Stockfish()
-
-for i in range(1000000):
-    print(f'Iteration {i}')
-    s.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
-
-    for m in s.legal_moves():
-        print(UCI.move(m.move, s.is_chess960()))
-
+    def legal_moves_str(self):
+        is_chess960 = self.is_chess960()
+        return [UCI.move(m.move, is_chess960) for m in self.legal_moves()]
