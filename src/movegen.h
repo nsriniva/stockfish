@@ -58,9 +58,8 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
 /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
 /// in handy to use this class instead of the low level generate() function.
 template<GenType T>
-class MoveList {
+struct MoveList {
 
-public:
   explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {}
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }

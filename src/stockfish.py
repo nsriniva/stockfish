@@ -51,12 +51,9 @@ class Stockfish(object):
         Threads.set(int(Options['Threads'].__float__()))
         Search.clear()
 
-        #UCI.loop_init()
-
         self.pos = Position()
         for name,val in Options:
             print(name, val)
-
         
     def __del__(self):
         del self.pos
@@ -71,13 +68,6 @@ class Stockfish(object):
     
     def legal_moves(self):
         return Moves(MoveList_LEGAL(self.pos))
-
-    def go(self, cmd):
-        UCI.loop_next('go '+cmd)
-
-    def cmd(self, cmd__):
-        UCI.loop_next(cmd__)
-
 
 s = Stockfish()
 

@@ -24,11 +24,12 @@
 ### Executable name
 ifeq ($(COMP),mingw)
 EXE = stockfish.exe
+DSO = stockfish.dll
 else
 EXE = stockfish
+DSO = libstockfish.so
 endif
 
-DSO = libstockfish.so
 
 ### Installation dir definitions
 PREFIX = /usr/local
@@ -38,10 +39,13 @@ BINDIR = $(PREFIX)/bin
 PGOBENCH = ./$(EXE) bench
 
 ### Source and object files
-SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp \
+LIBSRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp \
 	material.cpp misc.cpp movegen.cpp movepick.cpp pawns.cpp position.cpp psqt.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp
 
+SRCS = $(LIBSRCS) main.cpp
+
+LIBOBJS = $(notdir $(LIBSRCS:.cpp=.o))
 OBJS = $(notdir $(SRCS:.cpp=.o))
 
 VPATH = syzygy
@@ -156,7 +160,7 @@ endif
 ### ==========================================================================
 
 ### 3.1 Selecting compiler (default = gcc)
-CXXFLAGS += -Wall -Wcast-qual -fno-exceptions -fPIC -std=c++11 $(EXTRACXXFLAGS)
+CXXFLAGS += -Wall -Wcast-qual -fno-exceptions -std=c++11 $(EXTRACXXFLAGS)
 DEPENDFLAGS += -std=c++11
 LDFLAGS += $(EXTRALDFLAGS)
 
@@ -167,7 +171,7 @@ endif
 ifeq ($(COMP),gcc)
 	comp=gcc
 	CXX=g++
-	CXXFLAGS += -pedantic -Wextra -Wshadow
+	CXXFLAGS += -pedantic -Wextra -Wshadow -fPIC
 
 	ifeq ($(ARCH),$(filter $(ARCH),armv7 armv8))
 		ifeq ($(OS),Android)
@@ -472,7 +476,7 @@ default:
 ### Section 5. Private Targets
 ### ==========================================================================
 
-all: $(DSO) .depend
+all: $(EXE) $(DSO) .depend
 
 config-sanity:
 	@echo ""
@@ -509,16 +513,12 @@ config-sanity:
 	@test "$(pext)" = "yes" || test "$(pext)" = "no"
 	@test "$(comp)" = "gcc" || test "$(comp)" = "icc" || test "$(comp)" = "mingw" || test "$(comp)" = "clang"
 
-TMP:=$(LDFLAGS)
 
-
-LDFLAGS= $(subst "-msse","",$(TMP))
-
-$(DSO): $(OBJS)
+libstockfish.so: $(LIBOBJS)
 	$(CXX) -o $@ -shared -Wl,-flto -Wl,-soname,$@ $(OBJS) $(LDFLAGS)
 
-$(EXE): $(OBJS)
-	$(CXX) -o $@ $(OBJS) $(LDFLAGS)
+stockfish.dll:$(LIBOBJS)
+	$(CXX) -o $@ -shared -Wl,--out-implib,libstockfish.a -Wl,-no-undefined -Wl,--enable-runtime-pseudo-reloc
 
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS)

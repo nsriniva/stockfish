@@ -70,8 +70,6 @@ private:
   
 
 void init(OptionsMap&);
-void loop_init(void);
-void loop_next(std::string cmd);
 void loop(int argc, char* argv[]);
 std::string value(Value v);
 std::string square(Square s);
@@ -80,7 +78,7 @@ std::string pv(const Position& pos, Depth depth, Value alpha, Value beta);
 std::string wdl(Value v, int ply);
 Move to_move(const Position& pos, std::string& str);
 
-  void set_position(Position& pos, const std::string& strpos);
+void set_position(Position& pos, const std::string& strpos);
 } // namespace UCI
 
 extern UCI::OptionsMap Options;
