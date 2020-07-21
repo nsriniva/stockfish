@@ -427,3 +427,438 @@ index ef54ef4e..f9ff97d6 100644
    assert(type == "string");
    return currentValue;
  }
+diff --git a/src/working_code.patch b/src/working_code.patch
+new file mode 100644
+index 00000000..79a76871
+--- /dev/null
++++ b/src/working_code.patch
+@@ -0,0 +1,429 @@
++diff --git a/src/Makefile b/src/Makefile
++index c3660a20..e792ed28 100644
++--- a/src/Makefile
+++++ b/src/Makefile
++@@ -28,6 +28,8 @@ else
++ EXE = stockfish
++ endif
++ 
+++DSO = libstockfish.so
+++
++ ### Installation dir definitions
++ PREFIX = /usr/local
++ BINDIR = $(PREFIX)/bin
++@@ -36,7 +38,7 @@ BINDIR = $(PREFIX)/bin
++ PGOBENCH = ./$(EXE) bench
++ 
++ ### Source and object files
++-SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp \
+++SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp \
++ 	material.cpp misc.cpp movegen.cpp movepick.cpp pawns.cpp position.cpp psqt.cpp \
++ 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp
++ 
++@@ -154,7 +156,7 @@ endif
++ ### ==========================================================================
++ 
++ ### 3.1 Selecting compiler (default = gcc)
++-CXXFLAGS += -Wall -Wcast-qual -fno-exceptions -std=c++11 $(EXTRACXXFLAGS)
+++CXXFLAGS += -Wall -Wcast-qual -fno-exceptions -fPIC -std=c++11 $(EXTRACXXFLAGS)
++ DEPENDFLAGS += -std=c++11
++ LDFLAGS += $(EXTRALDFLAGS)
++ 
++@@ -470,7 +472,7 @@ default:
++ ### Section 5. Private Targets
++ ### ==========================================================================
++ 
++-all: $(EXE) .depend
+++all: $(DSO) .depend
++ 
++ config-sanity:
++ 	@echo ""
++@@ -507,6 +509,17 @@ config-sanity:
++ 	@test "$(pext)" = "yes" || test "$(pext)" = "no"
++ 	@test "$(comp)" = "gcc" || test "$(comp)" = "icc" || test "$(comp)" = "mingw" || test "$(comp)" = "clang"
++ 
+++TMP:=$(LDFLAGS)
+++
+++
+++LDFLAGS= $(subst "-msse","",$(TMP))
+++
+++$(DSO): $(OBJS)
+++	$(CXX) -o $@ -shared -Wl,-flto -Wl,-soname,$@ $(OBJS) $(LDFLAGS)
+++
+++$(EXE): $(OBJS)
+++	$(CXX) -o $@ $(OBJS) $(LDFLAGS)
+++
++ $(EXE): $(OBJS)
++ 	$(CXX) -o $@ $(OBJS) $(LDFLAGS)
++ 
++diff --git a/src/libstockfish.so b/src/libstockfish.so
++new file mode 100755
++index 00000000..b7f8291f
++Binary files /dev/null and b/src/libstockfish.so differ
++diff --git a/src/main.hpp b/src/main.hpp
++new file mode 100644
++index 00000000..ca8a15f6
++--- /dev/null
+++++ b/src/main.hpp
++@@ -0,0 +1,15 @@
+++#include <iostream>
+++
+++#include "bitboard.h"
+++#include "endgame.h"
+++#include "position.h"
+++#include "search.h"
+++#include "thread.h"
+++#include "tt.h"
+++#include "uci.h"
+++#include "syzygy/tbprobe.h"
+++
+++namespace PSQT {
+++  void init();
+++}
+++
++diff --git a/src/movegen.cpp b/src/movegen.cpp
++index 4ff12fc6..67f66e55 100644
++--- a/src/movegen.cpp
+++++ b/src/movegen.cpp
++@@ -23,6 +23,8 @@
++ #include "movegen.h"
++ #include "position.h"
++ 
+++#include <iostream>
+++
++ namespace {
++ 
++   template<GenType Type, Direction D>
++@@ -356,6 +358,7 @@ ExtMove* generate<LEGAL>(const Position& pos, ExtMove* moveList) {
++   Square ksq = pos.square<KING>(us);
++   ExtMove* cur = moveList;
++ 
+++  std::cout << "In generate<LEGAL>" << std::endl;
++   moveList = pos.checkers() ? generate<EVASIONS    >(pos, moveList)
++                             : generate<NON_EVASIONS>(pos, moveList);
++   while (cur != moveList)
++diff --git a/src/movegen.h b/src/movegen.h
++index c2e7c3f1..c747aee7 100644
++--- a/src/movegen.h
+++++ b/src/movegen.h
++@@ -21,6 +21,7 @@
++ #ifndef MOVEGEN_H_INCLUDED
++ #define MOVEGEN_H_INCLUDED
++ 
+++#include <iostream>
++ #include <algorithm>
++ 
++ #include "types.h"
++@@ -58,11 +59,13 @@ ExtMove* generate(const Position& pos, ExtMove* moveList);
++ /// The MoveList struct is a simple wrapper around generate(). It sometimes comes
++ /// in handy to use this class instead of the low level generate() function.
++ template<GenType T>
++-struct MoveList {
+++class MoveList {
++ 
++-  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {}
+++public:
+++  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {std::cout << "last = " << last << " begin = " << moveList << " size = " << size() << std::endl;}
++   const ExtMove* begin() const { return moveList; }
++   const ExtMove* end() const { return last; }
+++  const ExtMove* item(int i) {return moveList+i;}
++   size_t size() const { return last - moveList; }
++   bool contains(Move move) const {
++     return std::find(begin(), end(), move) != end();
++@@ -72,4 +75,5 @@ private:
++   ExtMove moveList[MAX_MOVES], *last;
++ };
++ 
+++using MoveList_LEGAL = MoveList<LEGAL>;
++ #endif // #ifndef MOVEGEN_H_INCLUDED
++diff --git a/src/stockfish.py b/src/stockfish.py
++new file mode 100644
++index 00000000..659b76df
++--- /dev/null
+++++ b/src/stockfish.py
++@@ -0,0 +1,94 @@
+++from io import StringIO
+++import cppyy
+++
+++def replace_getstr(klass, name):
+++    try:
+++        klass.__str__ = klass.__dict__['get_str']
+++    except KeyError:
+++        pass
+++
+++cppyy.py.add_pythonization(replace_getstr, 'UCI')
+++
+++cppyy.include('./main.hpp')
+++cppyy.load_library('libstockfish.so')
+++
+++from cppyy.gbl import engine_info, UCI, Tune, PSQT, Bitboards, \
+++    Position, Bitbases, Endgames, Threads, Search, Options, std, \
+++    StateListPtr, StateInfo, generate, MAX_MOVES, ExtMove, \
+++    MoveList, LEGAL, MoveList_LEGAL
+++from cppyy.gbl.UCI import Option
+++
+++class Moves(object):
+++
+++    def __init__(self, movelist):
+++        self.movelist = movelist
+++        
+++    def __iter__(self):
+++        self.idx = -1
+++        self.end = self.movelist.size()
+++        return self
+++    
+++    def __next__(self):
+++        self.idx += 1
+++        if self.idx not in range(self.end):
+++            raise StopIteration
+++
+++        return self.movelist.item(self.idx)
+++
+++    def __del__(self):
+++        del self.movelist
+++        
+++class Stockfish(object):
+++
+++    def __init__(self):
+++        UCI.init(Options)
+++        Tune.init()
+++        PSQT.init()
+++        Bitboards.init()
+++        Position.init()
+++        Bitbases.init()
+++        Endgames.init()
+++        Threads.set(int(Options['Threads'].__float__()))
+++        Search.clear()
+++
+++        #UCI.loop_init()
+++
+++        self.pos = Position()
+++        for name,val in Options:
+++            print(name, val)
+++
+++        
+++    def __del__(self):
+++        Threads.set(0)
+++
+++    def position(self, position_str):
+++        #UCI.loop_next('position '+cmd)
+++        UCI.set_position(self.pos, position_str)
+++
+++    def is_chess960(self):
+++        return self.pos.is_chess960()
+++    
+++    def legal_moves(self):
+++        return Moves(MoveList_LEGAL(self.pos))
+++
+++    def go(self, cmd):
+++        UCI.loop_next('go '+cmd)
+++
+++    def cmd(self, cmd__):
+++        UCI.loop_next(cmd__)
+++
+++
+++print('-----------Starting Stockfish--------------------')
+++s = Stockfish()
+++print('-----------Position Stockfish-----------------')
+++#s.position('fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+++s.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+++print('-----------Go Stockfish-----------------------')
+++moves = s.legal_moves()
+++
+++for m in moves:
+++    print(UCI.move(m.move, s.is_chess960()))
+++print('-----------Terminate Stockfish----------------')
+++del s
+++print('-----------Stockfish Terminated---------------')
+++
++diff --git a/src/uci.cpp b/src/uci.cpp
++index bb57c80b..bff1f264 100644
++--- a/src/uci.cpp
+++++ b/src/uci.cpp
++@@ -49,6 +49,7 @@ namespace {
++   // or the starting position ("startpos") and then makes the moves given in the
++   // following move list ("moves").
++ 
+++  
++   void position(Position& pos, istringstream& is, StateListPtr& states) {
++ 
++     Move m;
++@@ -207,69 +208,83 @@ namespace {
++ 
++ } // namespace
++ 
++-
+++namespace UCI {
+++  Position pos;
+++  string   token, cmd;
+++  StateListPtr states(new std::deque<StateInfo>(1));
+++}
++ /// UCI::loop() waits for a command from stdin, parses it and calls the appropriate
++ /// function. Also intercepts EOF from stdin to ensure gracefully exiting if the
++ /// GUI dies unexpectedly. When called with some command line arguments, e.g. to
++ /// run 'bench', once the command is executed the function returns immediately.
++ /// In addition to the UCI ones, also some additional debug commands are supported.
++ 
++-void UCI::loop(int argc, char* argv[]) {
+++void UCI::loop_init() {
+++  pos.set(StartFEN, false, &states->back(), Threads.main());
+++}
++ 
++-  Position pos;
++-  string token, cmd;
++-  StateListPtr states(new std::deque<StateInfo>(1));
+++void UCI::set_position(Position& pos, const string& strpos) {
+++  static StateListPtr states;
+++  
+++  states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
+++  pos.set(strpos, Options["UCI_Chess960"], &states->back(), Threads.main());
+++}
++ 
++-  pos.set(StartFEN, false, &states->back(), Threads.main());
++ 
++-  for (int i = 1; i < argc; ++i)
++-      cmd += std::string(argv[i]) + " ";
+++void UCI::loop_next(string cmd) {
+++  
+++  istringstream is(cmd);
+++  
+++  token.clear(); // Avoid a stale if getline() returns empty or blank line
+++  is >> skipws >> token;
+++  
+++  if (    token == "quit"
+++          ||  token == "stop")
+++    Threads.stop = true;
+++  
+++  // The GUI sends 'ponderhit' to tell us the user has played the expected move.
+++  // So 'ponderhit' will be sent if we were told to ponder on the same move the
+++  // user has played. We should continue searching but switch from pondering to
+++  // normal search.
+++  else if (token == "ponderhit")
+++    Threads.main()->ponder = false; // Switch to normal search
+++  
+++  else if (token == "uci")
+++    sync_cout << "id name " << engine_info(true)
+++	      << "\n"       << Options
+++	      << "\nuciok"  << sync_endl;
+++  
+++  else if (token == "setoption")  setoption(is);
+++  else if (token == "go")         go(pos, is, states);
+++  else if (token == "position")   position(pos, is, states);
+++  else if (token == "ucinewgame") Search::clear();
+++  else if (token == "isready")    sync_cout << "readyok" << sync_endl;
+++  
+++  // Additional custom non-UCI commands, mainly for debugging.
+++  // Do not use these commands during a search!
+++  else if (token == "flip")     pos.flip();
+++  else if (token == "bench")    bench(pos, is, states);
+++  else if (token == "d")        sync_cout << pos << sync_endl;
+++  else if (token == "eval")     sync_cout << Eval::trace(pos) << sync_endl;
+++  else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
+++  else
+++    sync_cout << "Unknown command: " << cmd << sync_endl;
+++}
++ 
++-  do {
++-      if (argc == 1 && !getline(cin, cmd)) // Block here waiting for input or EOF
++-          cmd = "quit";
+++void UCI::loop(int argc, char* argv[]) {
++ 
++-      istringstream is(cmd);
++ 
++-      token.clear(); // Avoid a stale if getline() returns empty or blank line
++-      is >> skipws >> token;
+++  loop_init();
+++  for (int i = 1; i < argc; ++i)
+++      cmd += std::string(argv[i]) + " ";
++ 
++-      if (    token == "quit"
++-          ||  token == "stop")
++-          Threads.stop = true;
++-
++-      // The GUI sends 'ponderhit' to tell us the user has played the expected move.
++-      // So 'ponderhit' will be sent if we were told to ponder on the same move the
++-      // user has played. We should continue searching but switch from pondering to
++-      // normal search.
++-      else if (token == "ponderhit")
++-          Threads.main()->ponder = false; // Switch to normal search
++-
++-      else if (token == "uci")
++-          sync_cout << "id name " << engine_info(true)
++-                    << "\n"       << Options
++-                    << "\nuciok"  << sync_endl;
++-
++-      else if (token == "setoption")  setoption(is);
++-      else if (token == "go")         go(pos, is, states);
++-      else if (token == "position")   position(pos, is, states);
++-      else if (token == "ucinewgame") Search::clear();
++-      else if (token == "isready")    sync_cout << "readyok" << sync_endl;
++-
++-      // Additional custom non-UCI commands, mainly for debugging.
++-      // Do not use these commands during a search!
++-      else if (token == "flip")     pos.flip();
++-      else if (token == "bench")    bench(pos, is, states);
++-      else if (token == "d")        sync_cout << pos << sync_endl;
++-      else if (token == "eval")     sync_cout << Eval::trace(pos) << sync_endl;
++-      else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
++-      else
++-          sync_cout << "Unknown command: " << cmd << sync_endl;
++-
++-  } while (token != "quit" && argc == 1); // Command line args are one-shot
+++  do {
+++    if (argc == 1 && !getline(cin, cmd)) // Block here waiting for input or EOF
+++      cmd = "quit";
+++    loop_next(cmd);
+++  } while (token != "quit" && argc == 1); // Command line args are one-shot     
++ }
++ 
++-
++ /// UCI::value() converts a Value to a string suitable for use with the UCI
++ /// protocol specification:
++ ///
++diff --git a/src/uci.h b/src/uci.h
++index ad954d9f..e83e9b82 100644
++--- a/src/uci.h
+++++ b/src/uci.h
++@@ -57,6 +57,7 @@ public:
++   operator double() const;
++   operator std::string() const;
++   bool operator==(const char*) const;
+++  std::string get_str() const;
++ 
++ private:
++   friend std::ostream& operator<<(std::ostream&, const OptionsMap&);
++@@ -66,8 +67,11 @@ private:
++   size_t idx;
++   OnChange on_change;
++ };
+++  
++ 
++ void init(OptionsMap&);
+++void loop_init(void);
+++void loop_next(std::string cmd);
++ void loop(int argc, char* argv[]);
++ std::string value(Value v);
++ std::string square(Square s);
++@@ -76,6 +80,7 @@ std::string pv(const Position& pos, Depth depth, Value alpha, Value beta);
++ std::string wdl(Value v, int ply);
++ Move to_move(const Position& pos, std::string& str);
++ 
+++  void set_position(Position& pos, const std::string& strpos);
++ } // namespace UCI
++ 
++ extern UCI::OptionsMap Options;
++diff --git a/src/ucioption.cpp b/src/ucioption.cpp
++index ef54ef4e..f9ff97d6 100644
++--- a/src/ucioption.cpp
+++++ b/src/ucioption.cpp
++@@ -132,6 +132,10 @@ Option::operator double() const {
++ }
++ 
++ Option::operator std::string() const {
+++  return get_str();
+++}
+++
+++std::string Option::get_str() const {
++   assert(type == "string");
++   return currentValue;
++ }

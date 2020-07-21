@@ -21,7 +21,6 @@
 #ifndef MOVEGEN_H_INCLUDED
 #define MOVEGEN_H_INCLUDED
 
-#include <iostream>
 #include <algorithm>
 
 #include "types.h"
@@ -62,7 +61,7 @@ template<GenType T>
 class MoveList {
 
 public:
-  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {std::cout << "last = " << last << " begin = " << moveList << " size = " << size() << std::endl;}
+  explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList)) {}
   const ExtMove* begin() const { return moveList; }
   const ExtMove* end() const { return last; }
   const ExtMove* item(int i) {return moveList+i;}

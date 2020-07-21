@@ -23,8 +23,6 @@
 #include "movegen.h"
 #include "position.h"
 
-#include <iostream>
-
 namespace {
 
   template<GenType Type, Direction D>
@@ -358,7 +356,6 @@ ExtMove* generate<LEGAL>(const Position& pos, ExtMove* moveList) {
   Square ksq = pos.square<KING>(us);
   ExtMove* cur = moveList;
 
-  std::cout << "In generate<LEGAL>" << std::endl;
   moveList = pos.checkers() ? generate<EVASIONS    >(pos, moveList)
                             : generate<NON_EVASIONS>(pos, moveList);
   while (cur != moveList)

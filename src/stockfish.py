@@ -59,6 +59,7 @@ class Stockfish(object):
 
         
     def __del__(self):
+        del self.pos
         Threads.set(0)
 
     def position(self, position_str):
@@ -78,17 +79,12 @@ class Stockfish(object):
         UCI.loop_next(cmd__)
 
 
-print('-----------Starting Stockfish--------------------')
 s = Stockfish()
-print('-----------Position Stockfish-----------------')
-#s.position('fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
-s.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
-print('-----------Go Stockfish-----------------------')
-moves = s.legal_moves()
 
-for m in moves:
-    print(UCI.move(m.move, s.is_chess960()))
-print('-----------Terminate Stockfish----------------')
-del s
-print('-----------Stockfish Terminated---------------')
+for i in range(1000000):
+    print(f'Iteration {i}')
+    s.position('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+
+    for m in s.legal_moves():
+        print(UCI.move(m.move, s.is_chess960()))
 
