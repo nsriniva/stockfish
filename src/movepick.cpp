@@ -1,8 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,7 +18,10 @@
 
 #include <cassert>
 
+#include "bitboard.h"
 #include "movepick.h"
+
+namespace Stockfish {
 
 namespace {
 
@@ -56,11 +57,14 @@ namespace {
 /// ordering is at the current node.
 
 /// MovePicker constructor for the main search
-MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh, const LowPlyHistory* lp,
-                       const CapturePieceToHistory* cph, const PieceToHistory** ch, Move cm, const Move* killers, int pl)
-           : pos(p), mainHistory(mh), lowPlyHistory(lp), captureHistory(cph), continuationHistory(ch),
-             ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d), ply(pl) {
-
+MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh,
+                                                             const CapturePieceToHistory* cph,
+                                                             const PieceToHistory** ch,
+                                                             Move cm,
+                                                             const Move* killers)
+           : pos(p), mainHistory(mh), captureHistory(cph), continuationHistory(ch),
+             ttMove(ttm), refutations{{killers[0], 0}, {killers[1], 0}, {cm, 0}}, depth(d)
+{
   assert(d > 0);
 
   stage = (pos.checkers() ? EVASION_TT : MAIN_TT) +
@@ -69,21 +73,24 @@ MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHist
 
 /// MovePicker constructor for quiescence search
 MovePicker::MovePicker(const Position& p, Move ttm, Depth d, const ButterflyHistory* mh,
-                       const CapturePieceToHistory* cph, const PieceToHistory** ch, Square rs)
-           : pos(p), mainHistory(mh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d) {
-
+                                                             const CapturePieceToHistory* cph,
+                                                             const PieceToHistory** ch,
+                                                             Square rs)
+           : pos(p), mainHistory(mh), captureHistory(cph), continuationHistory(ch), ttMove(ttm), recaptureSquare(rs), depth(d)
+{
   assert(d <= 0);
 
   stage = (pos.checkers() ? EVASION_TT : QSEARCH_TT) +
-           !(ttm && (depth > DEPTH_QS_RECAPTURES || to_sq(ttm) == recaptureSquare)
-                 && pos.pseudo_legal(ttm));
+          !(   ttm
+            && (pos.checkers() || depth > DEPTH_QS_RECAPTURES || to_sq(ttm) == recaptureSquare)
+            && pos.pseudo_legal(ttm));
 }
 
 /// MovePicker constructor for ProbCut: we generate captures with SEE greater
 /// than or equal to the given threshold.
-MovePicker::MovePicker(const Position& p, Move ttm, Value th, const CapturePieceToHistory* cph)
-           : pos(p), captureHistory(cph), ttMove(ttm), threshold(th) {
-
+MovePicker::MovePicker(const Position& p, Move ttm, Value th, Depth d, const CapturePieceToHistory* cph)
+           : pos(p), captureHistory(cph), ttMove(ttm), threshold(th), depth(d)
+{
   assert(!pos.checkers());
 
   stage = PROBCUT_TT + !(ttm && pos.capture(ttm)
@@ -99,18 +106,48 @@ void MovePicker::score() {
 
   static_assert(Type == CAPTURES || Type == QUIETS || Type == EVASIONS, "Wrong type");
 
-  for (auto& m : *this)
-      if (Type == CAPTURES)
-          m.value =  int(PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
-                   + (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))];
+  Bitboard threatened, threatenedByPawn, threatenedByMinor, threatenedByRook;
+  if constexpr (Type == QUIETS)
+  {
+      Color us = pos.side_to_move();
+      // squares threatened by pawns
+      threatenedByPawn  = pos.attacks_by<PAWN>(~us);
+      // squares threatened by minors or pawns
+      threatenedByMinor = pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatenedByPawn;
+      // squares threatened by rooks, minors or pawns
+      threatenedByRook  = pos.attacks_by<ROOK>(~us) | threatenedByMinor;
 
-      else if (Type == QUIETS)
+      // pieces threatened by pieces of lesser material value
+      threatened =  (pos.pieces(us, QUEEN) & threatenedByRook)
+                  | (pos.pieces(us, ROOK)  & threatenedByMinor)
+                  | (pos.pieces(us, KNIGHT, BISHOP) & threatenedByPawn);
+  }
+  else
+  {
+      // Silence unused variable warnings
+      (void) threatened;
+      (void) threatenedByPawn;
+      (void) threatenedByMinor;
+      (void) threatenedByRook;
+  }
+
+  for (auto& m : *this)
+      if constexpr (Type == CAPTURES)
+          m.value =  6 * int(PieceValue[MG][pos.piece_on(to_sq(m))])
+                   +     (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))];
+
+      else if constexpr (Type == QUIETS)
           m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]
                    + 2 * (*continuationHistory[0])[pos.moved_piece(m)][to_sq(m)]
-                   + 2 * (*continuationHistory[1])[pos.moved_piece(m)][to_sq(m)]
-                   + 2 * (*continuationHistory[3])[pos.moved_piece(m)][to_sq(m)]
+                   +     (*continuationHistory[1])[pos.moved_piece(m)][to_sq(m)]
+                   +     (*continuationHistory[3])[pos.moved_piece(m)][to_sq(m)]
                    +     (*continuationHistory[5])[pos.moved_piece(m)][to_sq(m)]
-                   + (ply < MAX_LPH ? std::min(4, depth / 3) * (*lowPlyHistory)[ply][from_to(m)] : 0);
+                   +     (threatened & from_sq(m) ?
+                           (type_of(pos.moved_piece(m)) == QUEEN && !(to_sq(m) & threatenedByRook)  ? 50000
+                          : type_of(pos.moved_piece(m)) == ROOK  && !(to_sq(m) & threatenedByMinor) ? 25000
+                          :                                         !(to_sq(m) & threatenedByPawn)  ? 15000
+                          :                                                                           0)
+                          :                                                                           0);
 
       else // Type == EVASIONS
       {
@@ -118,8 +155,8 @@ void MovePicker::score() {
               m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
                        - Value(type_of(pos.moved_piece(m)));
           else
-              m.value =  (*mainHistory)[pos.side_to_move()][from_to(m)]
-                       + (*continuationHistory[0])[pos.moved_piece(m)][to_sq(m)]
+              m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]
+                       + 2 * (*continuationHistory[0])[pos.moved_piece(m)][to_sq(m)]
                        - (1 << 28);
       }
 }
@@ -143,7 +180,7 @@ Move MovePicker::select(Pred filter) {
 }
 
 /// MovePicker::next_move() is the most important method of the MovePicker class. It
-/// returns a new pseudo legal move every time it is called until there are no more
+/// returns a new pseudo-legal move every time it is called until there are no more
 /// moves left, picking the move with the highest score from a list of generated moves.
 Move MovePicker::next_move(bool skipQuiets) {
 
@@ -164,11 +201,12 @@ top:
       endMoves = generate<CAPTURES>(pos, cur);
 
       score<CAPTURES>();
+      partial_insertion_sort(cur, endMoves, -3000 * depth);
       ++stage;
       goto top;
 
   case GOOD_CAPTURE:
-      if (select<Best>([&](){
+      if (select<Next>([&](){
                        return pos.see_ge(*cur, Value(-69 * cur->value / 1024)) ?
                               // Move losing capture to endBadCaptures to be tried later
                               true : (*endBadCaptures++ = *cur, false); }))
@@ -184,7 +222,7 @@ top:
           --endMoves;
 
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case REFUTATION:
       if (select<Next>([&](){ return    *cur != MOVE_NONE
@@ -192,7 +230,7 @@ top:
                                     &&  pos.pseudo_legal(*cur); }))
           return *(cur - 1);
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case QUIET_INIT:
       if (!skipQuiets)
@@ -205,7 +243,7 @@ top:
       }
 
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case QUIET:
       if (   !skipQuiets
@@ -219,7 +257,7 @@ top:
       endMoves = endBadCaptures;
 
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case BAD_CAPTURE:
       return select<Next>([](){ return true; });
@@ -230,16 +268,16 @@ top:
 
       score<EVASIONS>();
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case EVASION:
       return select<Best>([](){ return true; });
 
   case PROBCUT:
-      return select<Best>([&](){ return pos.see_ge(*cur, threshold); });
+      return select<Next>([&](){ return pos.see_ge(*cur, threshold); });
 
   case QCAPTURE:
-      if (select<Best>([&](){ return   depth > DEPTH_QS_RECAPTURES
+      if (select<Next>([&](){ return   depth > DEPTH_QS_RECAPTURES
                                     || to_sq(*cur) == recaptureSquare; }))
           return *(cur - 1);
 
@@ -248,14 +286,14 @@ top:
           return MOVE_NONE;
 
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case QCHECK_INIT:
       cur = moves;
       endMoves = generate<QUIET_CHECKS>(pos, cur);
 
       ++stage;
-      /* fallthrough */
+      [[fallthrough]];
 
   case QCHECK:
       return select<Next>([](){ return true; });
@@ -264,3 +302,5 @@ top:
   assert(false);
   return MOVE_NONE; // Silence warning
 }
+
+} // namespace Stockfish

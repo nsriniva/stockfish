@@ -1,8 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -26,21 +24,23 @@
 
 #include "types.h"
 
+namespace Stockfish {
+
 class Position;
 
 namespace UCI {
 
 class Option;
 
-/// Custom comparator because UCI options should be case insensitive
+/// Define a custom comparator, because the UCI options should be case-insensitive
 struct CaseInsensitiveLess {
   bool operator() (const std::string&, const std::string&) const;
 };
 
-/// Our options container is actually a std::map
+/// The options container is defined as a std::map
 typedef std::map<std::string, Option, CaseInsensitiveLess> OptionsMap;
 
-/// Option class implements an option as defined by UCI protocol
+/// The Option class implements each option as specified by the UCI protocol
 class Option {
 
   typedef void (*OnChange)(const Option&);
@@ -82,5 +82,7 @@ void set_position(Position& pos, const std::string& strpos);
 } // namespace UCI
 
 extern UCI::OptionsMap Options;
+
+} // namespace Stockfish
 
 #endif // #ifndef UCI_H_INCLUDED

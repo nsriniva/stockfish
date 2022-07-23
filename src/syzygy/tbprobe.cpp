@@ -1,7 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (c) 2013 Ronald de Man
-  Copyright (C) 2016-2020 Marco Costalba, Lucas Braesch
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -51,9 +50,11 @@
 #include <windows.h>
 #endif
 
-using namespace Tablebases;
+using namespace Stockfish::Tablebases;
 
-int Tablebases::MaxCardinality;
+int Stockfish::Tablebases::MaxCardinality;
+
+namespace Stockfish {
 
 namespace {
 
@@ -104,9 +105,6 @@ template<> inline void swap_endian<uint8_t>(uint8_t&) {}
 
 template<typename T, int LE> T number(void* addr)
 {
-    static const union { uint32_t i; char c[4]; } Le = { 0x01020304 };
-    static const bool IsLittleEndian = (Le.c[0] == 4);
-
     T v;
 
     if ((uintptr_t)addr & (alignof(T) - 1)) // Unaligned pointer (very rare)
@@ -191,7 +189,8 @@ public:
         std::stringstream ss(Paths);
         std::string path;
 
-        while (std::getline(ss, path, SepChar)) {
+        while (std::getline(ss, path, SepChar))
+        {
             fname = path + "/" + f;
             std::ifstream::open(fname);
             if (is_open())
@@ -224,7 +223,9 @@ public:
 
         *mapping = statbuf.st_size;
         *baseAddress = mmap(nullptr, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 0);
+#if defined(MADV_RANDOM)
         madvise(*baseAddress, statbuf.st_size, MADV_RANDOM);
+#endif
         ::close(fd);
 
         if (*baseAddress == MAP_FAILED)
@@ -564,7 +565,8 @@ int decompress_pairs(PairsData* d, uint64_t idx) {
     int buf64Size = 64;
     Sym sym;
 
-    while (true) {
+    while (true)
+    {
         int len = 0; // This is the symbol length - d->min_sym_len
 
         // Now get the symbol length. For any symbol s64 of length l right-padded
@@ -602,8 +604,8 @@ int decompress_pairs(PairsData* d, uint64_t idx) {
     // We binary-search for our value recursively expanding into the left and
     // right child symbols until we reach a leaf node where symlen[sym] + 1 == 1
     // that will store the value we need.
-    while (d->symlen[sym]) {
-
+    while (d->symlen[sym])
+    {
         Sym left = d->btree[sym].get<LR::Left>();
 
         // If a symbol contains 36 sub-symbols (d->symlen[sym] + 1 = 36) and
@@ -708,7 +710,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
 
         leadPawns = b = pos.pieces(color_of(pc), PAWN);
         do
-            squares[size++] = pop_lsb(&b) ^ flipSquares;
+            squares[size++] = pop_lsb(b) ^ flipSquares;
         while (b);
 
         leadPawnsCnt = size;
@@ -728,7 +730,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
     // directly map them to the correct color and square.
     b = pos.pieces() ^ leadPawns;
     do {
-        Square s = pop_lsb(&b);
+        Square s = pop_lsb(b);
         squares[size] = s ^ flipSquares;
         pieces[size++] = Piece(pos.piece_on(s) ^ flipColor);
     } while (b);
@@ -759,7 +761,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
     if (entry->hasPawns) {
         idx = LeadPawnIdx[leadPawnsCnt][squares[0]];
 
-        std::sort(squares + 1, squares + leadPawnsCnt, pawns_comp);
+        std::stable_sort(squares + 1, squares + leadPawnsCnt, pawns_comp);
 
         for (int i = 1; i < leadPawnsCnt; ++i)
             idx += Binomial[i][MapPawns[squares[i]]];
@@ -767,7 +769,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
         goto encode_remaining; // With pawns we have finished special treatments
     }
 
-    // In positions withouth pawns, we further flip the squares to ensure leading
+    // In positions without pawns, we further flip the squares to ensure leading
     // piece is below RANK_5.
     if (rank_of(squares[0]) > RANK_4)
         for (int i = 0; i < size; ++i)
@@ -810,7 +812,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
     // Rs "together" in 62 * 61 / 2 ways (we divide by 2 because rooks can be
     // swapped and still get the same position.)
     //
-    // In case we have at least 3 unique pieces (inlcuded kings) we encode them
+    // In case we have at least 3 unique pieces (included kings) we encode them
     // together.
     if (entry->hasUniquePieces) {
 
@@ -825,7 +827,7 @@ Ret do_probe_table(const Position& pos, T* entry, WDLScore wdl, ProbeState* resu
                    + (squares[1] - adjust1)) * 62
                    +  squares[2] - adjust2;
 
-        // First piece is on a1-h8 diagonal, second below: map this occurence to
+        // First piece is on a1-h8 diagonal, second below: map this occurrence to
         // 6 to differentiate from the above case, rank_of() maps a1-d4 diagonal
         // to 0...3 and finally MapB1H1H7[] maps the b1-h1-h7 triangle to 0..27.
         else if (off_A1H8(squares[1]))
@@ -855,12 +857,12 @@ encode_remaining:
     idx *= d->groupIdx[0];
     Square* groupSq = squares + d->groupLen[0];
 
-    // Encode remainig pawns then pieces according to square, in ascending order
+    // Encode remaining pawns then pieces according to square, in ascending order
     bool remainingPawns = entry->hasPawns && entry->pawnCount[1];
 
     while (d->groupLen[++next])
     {
-        std::sort(groupSq, groupSq + d->groupLen[next]);
+        std::stable_sort(groupSq, groupSq + d->groupLen[next]);
         uint64_t n = 0;
 
         // Map down a square if "comes later" than a square in the previous
@@ -883,7 +885,7 @@ encode_remaining:
 
 // Group together pieces that will be encoded together. The general rule is that
 // a group contains pieces of same type and color. The exception is the leading
-// group that, in case of positions withouth pawns, can be formed by 3 different
+// group that, in case of positions without pawns, can be formed by 3 different
 // pieces (default) or by the king pair when there is not a unique piece apart
 // from the kings. When there are pawns, pawns are always first in pieces[].
 //
@@ -915,7 +917,7 @@ void set_groups(T& e, PairsData* d, int order[], File f) {
     //
     // This ensures unique encoding for the whole position. The order of the
     // groups is a per-table parameter and could not follow the canonical leading
-    // pawns/pieces -> remainig pawns -> remaining pieces. In particular the
+    // pawns/pieces -> remaining pawns -> remaining pieces. In particular the
     // first group is at order[0] position and the remaining pawns, when present,
     // are at order[1] position.
     bool pp = e.hasPawns && e.pawnCount[1]; // Pawns on both sides
@@ -935,7 +937,7 @@ void set_groups(T& e, PairsData* d, int order[], File f) {
             d->groupIdx[1] = idx;
             idx *= Binomial[d->groupLen[1]][48 - d->groupLen[0]];
         }
-        else // Remainig pieces
+        else // Remaining pieces
         {
             d->groupIdx[next] = idx;
             idx *= Binomial[d->groupLen[next]][freeSquares];
@@ -945,7 +947,7 @@ void set_groups(T& e, PairsData* d, int order[], File f) {
     d->groupIdx[n] = idx;
 }
 
-// In Recursive Pairing each symbol represents a pair of childern symbols. So
+// In Recursive Pairing each symbol represents a pair of children symbols. So
 // read d->btree[] symbols data and expand each one in his left and right child
 // symbol until reaching the leafs that represent the symbol value.
 uint8_t set_symlen(PairsData* d, Sym s, std::vector<bool>& visited) {
@@ -999,7 +1001,7 @@ uint8_t* set_sizes(PairsData* d, uint8_t* data) {
     // so that d->lowestSym[i] >= d->lowestSym[i+1] (when read as LittleEndian).
     // Starting from this we compute a base64[] table indexed by symbol length
     // and containing 64 bit values so that d->base64[i] >= d->base64[i+1].
-    // See http://www.eecs.harvard.edu/~michaelm/E210/huffman.pdf
+    // See https://en.wikipedia.org/wiki/Huffman_coding
     for (int i = d->base64.size() - 2; i >= 0; --i) {
         d->base64[i] = (d->base64[i + 1] + number<Sym, LittleEndian>(&d->lowestSym[i])
                                          - number<Sym, LittleEndian>(&d->lowestSym[i + 1])) / 2;
@@ -1140,7 +1142,7 @@ void* mapped(TBTable<Type>& e, const Position& pos) {
     if (e.ready.load(std::memory_order_acquire))
         return e.baseAddress; // Could be nullptr if file does not exist
 
-    std::unique_lock<std::mutex> lk(mutex);
+    std::scoped_lock<std::mutex> lk(mutex);
 
     if (e.ready.load(std::memory_order_relaxed)) // Recheck under lock
         return e.baseAddress;
@@ -1288,7 +1290,7 @@ void Tablebases::init(const std::string& paths) {
     for (auto s : diagonal)
         MapA1D1D4[s] = code++;
 
-    // MapKK[] encodes all the 461 possible legal positions of two kings where
+    // MapKK[] encodes all the 462 possible legal positions of two kings where
     // the first is in the a1-d1-d4 triangle. If the first king is on the a1-d4
     // diagonal, the other one shall not to be above the a1-h8 diagonal.
     std::vector<std::pair<int, Square>> bothOnDiagonal;
@@ -1315,7 +1317,7 @@ void Tablebases::init(const std::string& paths) {
     for (auto p : bothOnDiagonal)
         MapKK[p.first][p.second] = code++;
 
-    // Binomial[] stores the Binomial Coefficents using Pascal rule. There
+    // Binomial[] stores the Binomial Coefficients using Pascal rule. There
     // are Binomial[k][n] ways to choose k elements from a set of n elements.
     Binomial[0][0] = 1;
 
@@ -1335,7 +1337,7 @@ void Tablebases::init(const std::string& paths) {
     for (int leadPawnsCnt = 1; leadPawnsCnt <= 5; ++leadPawnsCnt)
         for (File f = FILE_A; f <= FILE_D; ++f)
         {
-            // Restart the index at every file because TB table is splitted
+            // Restart the index at every file because TB table is split
             // by file, so we can reuse the same index for different files.
             int idx = 0;
 
@@ -1439,7 +1441,7 @@ WDLScore Tablebases::probe_wdl(Position& pos, ProbeState* result) {
 // If n = 100 immediately after a capture or pawn move, then the position
 // is also certainly a win, and during the whole phase until the next
 // capture or pawn move, the inequality to be preserved is
-// dtz + 50-movecounter <= 100.
+// dtz + 50-move-counter <= 100.
 //
 // In short, if a move is available resulting in dtz + 50-move-counter <= 99,
 // then do not accept moves leading to dtz + 50-move-counter == 100.
@@ -1534,6 +1536,14 @@ bool Tablebases::root_probe(Position& pos, Search::RootMoves& rootMoves) {
             WDLScore wdl = -probe_wdl(pos, &result);
             dtz = dtz_before_zeroing(wdl);
         }
+        else if (pos.is_draw(1))
+        {
+            // In case a root move leads to a draw by repetition or
+            // 50-move rule, we set dtz to zero. Note: since we are
+            // only 1 ply from the root, this must be a true 3-fold
+            // repetition inside the game history.
+            dtz = 0;
+        }
         else
         {
             // Otherwise, take dtz for the new position and correct by 1 ply
@@ -1584,6 +1594,7 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves) {
 
     ProbeState result;
     StateInfo st;
+    WDLScore wdl;
 
     bool rule50 = Options["Syzygy50MoveRule"];
 
@@ -1592,7 +1603,10 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves) {
     {
         pos.do_move(m.pv[0], st);
 
-        WDLScore wdl = -probe_wdl(pos, &result);
+        if (pos.is_draw(1))
+            wdl = WDLDraw;
+        else
+            wdl = -probe_wdl(pos, &result);
 
         pos.undo_move(m.pv[0]);
 
@@ -1609,3 +1623,5 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves) {
 
     return true;
 }
+
+} // namespace Stockfish
